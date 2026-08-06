@@ -16,13 +16,19 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
 
-    @property
-    def DATABASE_URL(self) -> str:
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    DATABASE_URL_ENV: str | None = None
 
     @property
-    def SYNC_DATABASE_URL(self) -> str:
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    def DATABASE_URL(self) -> str:
+        if self.DATABASE_URL_ENV:
+            url = self.DATABASE_URL_ENV
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+        # 기본 SQLite 폴백 (Zero-Config 서버 구동용)
+        return "sqlite+aiosqlite:///./rebalance.db"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
