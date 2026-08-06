@@ -16,12 +16,18 @@ class PriceService:
 
     async def get_price(self, stock_code: str, app_key: str, app_secret: str) -> Decimal:
         cache_key = f"stock_price:{stock_code}"
-        cached_price = await redis_client.get(cache_key)
-        if cached_price:
-            return Decimal(cached_price)
+        try:
+            cached_price = await redis_client.get(cache_key)
+            if cached_price:
+                return Decimal(cached_price)
+        except Exception:
+            pass
 
         price = await kis_client.get_domestic_price(app_key, app_secret, stock_code)
-        await redis_client.set(cache_key, str(price), ex=self.CACHE_TTL)
+        try:
+            await redis_client.set(cache_key, str(price), ex=self.CACHE_TTL)
+        except Exception:
+            pass
         return price
 
     async def get_prices_batch(self, stock_codes: list[str], app_key: str, app_secret: str) -> dict[str, Decimal]:

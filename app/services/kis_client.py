@@ -8,9 +8,12 @@ class KISClient:
 
     async def get_access_token(self, app_key: str, app_secret: str) -> str:
         cache_key = f"kis_token:{app_key}"
-        cached_token = await redis_client.get(cache_key)
-        if cached_token:
-            return cached_token
+        try:
+            cached_token = await redis_client.get(cache_key)
+            if cached_token:
+                return cached_token
+        except Exception:
+            pass
 
         url = f"{self.BASE_URL}/oauth2/tokenP"
         payload = {
@@ -27,8 +30,11 @@ class KISClient:
             access_token = data.get("access_token")
             expires_in = data.get("expires_in", 86400)
 
-            # Store in Redis with TTL (safe buffer of 60s)
-            await redis_client.set(cache_key, access_token, ex=max(60, expires_in - 60))
+            try:
+                await redis_client.set(cache_key, access_token, ex=max(60, expires_in - 60))
+            except Exception:
+                pass
+
             return access_token
 
     async def get_domestic_price(self, app_key: str, app_secret: str, stock_code: str) -> Decimal:
