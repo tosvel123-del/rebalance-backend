@@ -43,6 +43,29 @@ async def create_account(
     await db.refresh(account)
     return account
 
+from app.services.kis_client import kis_client
+from app.services.price_service import price_service
+
+@router.get("/holdings")
+async def get_my_kis_holdings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Account).where(Account.user_id == current_user.id)
+    res = await db.execute(stmt)
+    acc = res.scalars().first()
+    if not acc:
+        return {"holdings": [], "account_no": None}
+
+    app_key = decrypt_secret(acc.kis_app_key)
+    app_secret = decrypt_secret(acc.kis_app_secret)
+
+    try:
+        holdings = await kis_client.get_account_holdings(app_key, app_secret, acc.account_no)
+        return {"holdings": holdings, "account_no": acc.account_no}
+    except Exception as e:
+        return {"holdings": [], "account_no": acc.account_no, "error": str(e)}
+
 @router.get("", response_model=list[AccountResponse])
 async def list_accounts(
     current_user: User = Depends(get_current_user),
