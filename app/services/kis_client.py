@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import httpx
 from fastapi import HTTPException
 from app.redis_client import redis_client
@@ -102,13 +102,28 @@ class KISClient:
             for item in output1:
                 qty = int(item.get("hldg_qty", 0))
                 if qty > 0:
+                    avg_price = self._decimal_value(
+                        item.get("pchs_avg_pric"),
+                        item.get("pavr"),
+                    )
                     holdings.append({
                         "stock_code": item.get("pdno"),
                         "stock_name": item.get("prdt_name"),
                         "quantity": qty,
-                        "avg_price": Decimal(item.get("pavr", 0)),
+                        "avg_price": avg_price,
+                        "current_price": self._decimal_value(item.get("prpr")),
                     })
             return holdings
+
+    @staticmethod
+    def _decimal_value(*values: object) -> Decimal:
+        for value in values:
+            if value not in (None, ""):
+                try:
+                    return Decimal(str(value).replace(",", ""))
+                except InvalidOperation:
+                    continue
+        return Decimal("0")
 
     async def get_overseas_price(self, app_key: str, app_secret: str, market: str, stock_code: str) -> Decimal:
         raise NotImplementedError("Direct overseas stock API is reserved for future implementation.")

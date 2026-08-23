@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     PRICE_CACHE_TTL_SECONDS: int = 300
+    ENABLE_NAVER_FALLBACK: bool = False
 
     DATABASE_URL_ENV: str | None = None
 
