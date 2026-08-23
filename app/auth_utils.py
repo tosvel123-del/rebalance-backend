@@ -52,7 +52,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         except Exception:
             pass
 
-    # 게스트 / 데모 토큰 시 자동 데모 유저 매핑 (Zero-Fail 인증)
+    if not settings.ALLOW_DEMO_AUTH:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+
+    # Development-only demo user mapping.
     stmt = select(User).where(User.email == "demo@rebalance.app")
     result = await db.execute(stmt)
     demo_user = result.scalar_one_or_none()

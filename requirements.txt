@@ -17,3 +17,4 @@ aiosqlite
 email-validator
 pytest
 pytest-asyncio
+yfinance

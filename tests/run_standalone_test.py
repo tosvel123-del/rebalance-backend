@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.models.portfolio import Portfolio, Holding, TargetWeight
 from app.services.rebalance_engine import RebalanceEngine
 from app.services.notification_service import NotificationService
-from app.services.price_service import price_service
+from app.services.price_service import price_service, StockReference
 
 class TestRebalanceEngine(unittest.TestCase):
     def setUp(self):
@@ -53,9 +53,10 @@ class TestRebalanceEngine(unittest.TestCase):
         self.assertEqual(action_map["000660"].quantity, 2)
 
     def test_market_classification(self):
-        self.assertEqual(price_service.classify_market("005930", "삼성전자"), "KR")
-        self.assertEqual(price_service.classify_market("133690", "TIGER 미국나스닥100"), "US")
-        self.assertEqual(price_service.classify_market("360750", "KODEX 미국S&P500TR"), "US")
+        self.assertEqual(
+            price_service._provider_for(StockReference(code="005930", market="US")).source_name,
+            "naver_finance",
+        )
 
     def test_notification_constants(self):
         service = NotificationService()

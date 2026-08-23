@@ -4,12 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth_utils import get_current_user, encrypt_secret, decrypt_secret
 from app.database import get_db
 from app.models.user import User, Account
-from app.schemas.account import AccountCreate, AccountResponse
+from app.schemas.account import AccountCreate, AccountResponse, AccountUpdate
 
 from app.services.kis_client import kis_client
-from app.services.price_service import price_service
+import logging
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
+logger = logging.getLogger(__name__)
 
 def mask_key(key: str) -> str:
     if len(key) <= 4:
@@ -27,14 +28,17 @@ async def get_my_kis_holdings(
     if not acc:
         return {"holdings": [], "account_no": None}
 
-    app_key = decrypt_secret(acc.kis_app_key)
-    app_secret = decrypt_secret(acc.kis_app_secret)
-
     try:
+        app_key = decrypt_secret(acc.kis_app_key)
+        app_secret = decrypt_secret(acc.kis_app_secret)
         holdings = await kis_client.get_account_holdings(app_key, app_secret, acc.account_no)
         return {"holdings": holdings, "account_no": acc.account_no}
-    except Exception as e:
-        return {"holdings": [], "account_no": acc.account_no, "error": str(e)}
+    except Exception:
+        logger.exception("KIS holdings sync failed for account id=%s", acc.id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="KIS 잔고 조회에 실패했습니다. 앱키, 앱시크릿, 계좌번호와 Open API 권한을 확인하세요.",
+        )
 
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_account(
@@ -50,10 +54,6 @@ async def create_account(
     if res.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Account already registered for this user")
 
-    # Safety Guard: Check if key appears to be a trade/write key
-    if "TRADE" in acc_in.kis_app_key.upper() or "WRITE" in acc_in.kis_app_key.upper():
-        raise HTTPException(status_code=400, detail="Read-Only (Quotation) API key required. Write/Trade keys are forbidden.")
-
     account = Account(
         user_id=current_user.id,
         label=acc_in.label,
@@ -62,6 +62,37 @@ async def create_account(
         account_no=acc_in.account_no,
     )
     db.add(account)
+    await db.commit()
+    await db.refresh(account)
+    return account
+
+
+@router.put("/{account_id}", response_model=AccountResponse)
+async def update_account(
+    account_id: int,
+    acc_in: AccountUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
+    res = await db.execute(stmt)
+    account = res.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    duplicate_stmt = select(Account).where(
+        Account.user_id == current_user.id,
+        Account.account_no == acc_in.account_no,
+        Account.id != account_id,
+    )
+    duplicate = await db.execute(duplicate_stmt)
+    if duplicate.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Account already registered for this user")
+
+    account.label = acc_in.label
+    account.account_no = acc_in.account_no
+    account.kis_app_key = encrypt_secret(acc_in.kis_app_key)
+    account.kis_app_secret = encrypt_secret(acc_in.kis_app_secret)
     await db.commit()
     await db.refresh(account)
     return account

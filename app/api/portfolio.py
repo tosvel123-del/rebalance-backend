@@ -10,7 +10,7 @@ from app.schemas.portfolio import (
     PortfolioCreate, PortfolioUpdate, PortfolioResponse,
     HoldingsBatchUpdate, TargetWeightsBatchUpdate, PortfolioStatusResponse, RebalanceActionResponse
 )
-from app.services.price_service import price_service
+from app.services.price_service import price_service, StockReference
 from app.services.rebalance_engine import RebalanceEngine
 from app.services.kis_client import kis_client
 
@@ -120,14 +120,13 @@ async def update_holdings(
 
     await db.execute(delete(Holding).where(Holding.portfolio_id == portfolio_id))
     for item in h_in.holdings:
-        market = price_service.classify_market(item.stock_code, item.stock_name)
         holding = Holding(
             portfolio_id=portfolio_id,
             stock_code=item.stock_code,
             stock_name=item.stock_name,
             quantity=item.quantity,
             avg_price=item.avg_price,
-            market=market,
+            market=item.market,
         )
         db.add(holding)
 
@@ -194,14 +193,13 @@ async def sync_kis_holdings(
 
     await db.execute(delete(Holding).where(Holding.portfolio_id == portfolio_id))
     for item in kis_holdings:
-        market = price_service.classify_market(item["stock_code"], item["stock_name"])
         holding = Holding(
             portfolio_id=portfolio_id,
             stock_code=item["stock_code"],
             stock_name=item["stock_name"],
             quantity=item["quantity"],
             avg_price=item["avg_price"],
-            market=market,
+            market="KR",
         )
         db.add(holding)
 
@@ -230,13 +228,8 @@ async def get_portfolio_status(
     if not p:
         raise HTTPException(status_code=404, detail="Portfolio not found")
 
-    app_key, app_secret = "", ""
-    if p.account:
-        app_key = decrypt_secret(p.account.kis_app_key)
-        app_secret = decrypt_secret(p.account.kis_app_secret)
-
-    codes = [h.stock_code for h in p.holdings]
-    prices = await price_service.get_prices_batch(codes, app_key, app_secret)
+    stocks = [StockReference(code=h.stock_code, name=h.stock_name, market=h.market) for h in p.holdings]
+    prices = await price_service.get_prices_batch(stocks)
 
     total_val = rebalance_engine.calculate_total_value(p, prices)
     actions = rebalance_engine.check_portfolio(p, prices)

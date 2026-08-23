@@ -2,8 +2,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Stock Portfolio Rebalance Notifier"
+    ENVIRONMENT: str = "development"
     SECRET_KEY: str = "super-secret-key-change-in-production"
     FERNET_KEY: str = "b3ZlcmZsb3ctc2VjcmV0LWtleS1tdXN0LWJlLTMyLWJ5dGVzPQ=="
+    JOB_TRIGGER_SECRET: str = ""
+    ALLOW_DEMO_AUTH: bool = True
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
@@ -15,6 +18,7 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    PRICE_CACHE_TTL_SECONDS: int = 300
 
     DATABASE_URL_ENV: str | None = None
 
@@ -33,3 +37,26 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
+
+
+def validate_production_settings() -> None:
+    """Fail closed when a deploy accidentally uses development secrets."""
+    if settings.ENVIRONMENT.lower() != "production":
+        return
+
+    insecure_values = {
+        "super-secret-key-change-in-production",
+        "b3ZlcmZsb3ctc2VjcmV0LWtleS1tdXN0LWJlLTMyLWJ5dGVzPQ==",
+        "",
+    }
+    missing = [
+        name
+        for name, value in {
+            "SECRET_KEY": settings.SECRET_KEY,
+            "FERNET_KEY": settings.FERNET_KEY,
+            "JOB_TRIGGER_SECRET": settings.JOB_TRIGGER_SECRET,
+        }.items()
+        if value in insecure_values
+    ]
+    if missing:
+        raise RuntimeError(f"Production secrets must be configured: {', '.join(missing)}")
